@@ -8,4 +8,5 @@ public interface Storage {
     boolean addPlayer(String username);
     boolean removePlayer(String username);
     void saveWhitelist();
+    boolean isReady();
 }

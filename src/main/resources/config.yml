@@ -1,23 +1,50 @@
 settings:
   # Enabling of disabling whitelist: true, false.
-  enable: true
+  enable: false
   # Storage type: yml, mysql
   storage-type: yml
 
 database: # If storage type is mysql
-  host: "localhost:3306"
-  name: "database"
-  username: "root"
-  password: "password"
+  host: localhost:3306
+  name: database
+  username: root
+  password: password
+  # Additional JDBC connection options (appended to the URL as query string)
+  connectionOptions: "autoReconnect=true&connectTimeout=10000&socketTimeout=60000&useSSL=false&serverTimezone=Europe/Moscow&characterEncoding=utf8"
+  # Connection pool settings (for 2000+ players)
+  pool-size: 10
+  connection-timeout: 30000
+  idle-timeout: 600000
+  max-lifetime: 1800000
+  # Full cache re-sync interval in minutes (to pick up changes from external sources like websites/consoles)
+  # Set to 3 minutes to avoid database overloading and rate-limiting.
+  sync-interval: 3
 
 messages:
-  kick-message: "&cYou are not on the whitelist."
-  no-permissions: "&2NBWL &7> &cYou don't have permission."
-  player-add: "&2NBWL &7> &a%player% added to the whitelist."
-  player-remove: "&2NBWL &7> &c%player% removed from the whitelist."
-  player-already-exists: "&2NBWL &7> &c%player% already on the whitelist."
-  player-not-found: "&2NBWL &7> &c%player% not found on the whitelist."
-  plugin-reload: "&2NBWL &7> &aPlugin config reloaded."
-  plugin-enable: "&2NBWL &7> &aName Based Whitelist enabled."
-  plugin-disable: "&2NBWL &7> &cName Based Whitelist disabled."
-  plugin-usage: "&2NBWL &7> &fPlugin usage:\n &7/nbwl reload &f- Config Reload.\n &7/nbwl add|remove <username> &f- add|remove player in whitelist.\n &7/nbwl enable|disable &f- Enable|Disable Name Based Whitelist."
+  kick-message: |-
+    &#CDDEDF⚠
+
+    &#CDDEDFпᴏдᴋлючᴇʜиᴇ ᴋ ᴄᴇᴘʙᴇᴘу ʜᴇʙᴏзᴍᴏжʜᴏ!
+    &#ffffffдля зᴀxᴏдᴀ &#CDDEDFᴛᴘᴇбуᴇᴛᴄя иᴍᴇᴛь &#ffffffпᴘᴏxᴏдᴋу
+    &#ffffffили &#CDDEDFзᴀпᴏлʜиᴛь &#ffffffᴀʜᴋᴇᴛу.
+
+    &#CDDEDF⚠
+  no-permissions: ' &#CDDEDFꜰ&#C7DDD3ᴏ&#C1DDC6x&#BEDDC0ᴡ&#BBDCBAᴀ&#AEDCBDʀ&#A1DCC0ᴅ
+    &#94DCC3▢ &#ffffffу ʙᴀᴄ ʜᴇдᴏᴄᴛᴀᴛᴏчʜᴏ пᴘᴀʙ.'
+  player-add: ' &#CDDEDFꜰ&#C7DDD3ᴏ&#C1DDC6x&#BEDDC0ᴡ&#BBDCBAᴀ&#AEDCBDʀ&#A1DCC0ᴅ &#94DCC3▢
+    &#ffffffигᴘᴏᴋ %player% дᴏбᴀʙлᴇʜ ʙ ʙᴀйᴛлиᴄᴛ.'
+  player-remove: ' &#CDDEDFꜰ&#C7DDD3ᴏ&#C1DDC6x&#BEDDC0ᴡ&#BBDCBAᴀ&#AEDCBDʀ&#A1DCC0ᴅ
+    &#94DCC3▢ &#ffffffигᴘᴏᴋ %player% удᴀлёʜ из ʙᴀйᴛлиᴄᴛᴀ.'
+  player-already-exists: ' &#CDDEDFꜰ&#C7DDD3ᴏ&#C1DDC6x&#BEDDC0ᴡ&#BBDCBAᴀ&#AEDCBDʀ&#A1DCC0ᴅ
+    &#94DCC3▢ &#ffffffигᴘᴏᴋ %player% ужᴇ ʙ ʙᴀйᴛлиᴄᴛᴇ.'
+  player-not-found: ' &#CDDEDFꜰ&#C7DDD3ᴏ&#C1DDC6x&#BEDDC0ᴡ&#BBDCBAᴀ&#AEDCBDʀ&#A1DCC0ᴅ
+    &#94DCC3▢ &#ffffffигᴘᴏᴋ %player% ʜᴇ ʜᴀйдᴇʜ ʙ ʙᴀйᴛлиᴄᴛᴇ.'
+  plugin-reload: ' &#CDDEDFꜰ&#C7DDD3ᴏ&#C1DDC6x&#BEDDC0ᴡ&#BBDCBAᴀ&#AEDCBDʀ&#A1DCC0ᴅ
+    &#94DCC3▢ &#ffffffᴡʜɪᴛᴇʟɪꜱᴛ уᴄпᴇшʜᴏ пᴇᴘᴇзᴀгᴘужᴇʜ.'
+  plugin-enable: ' &#CDDEDFꜰ&#C7DDD3ᴏ&#C1DDC6x&#BEDDC0ᴡ&#BBDCBAᴀ&#AEDCBDʀ&#A1DCC0ᴅ
+    &#94DCC3▢ &#ffffffᴡʜɪᴛᴇʟɪꜱᴛ ʙᴋлючᴇʜ.'
+  plugin-disable: ' &#CDDEDFꜰ&#C7DDD3ᴏ&#C1DDC6x&#BEDDC0ᴡ&#BBDCBAᴀ&#AEDCBDʀ&#A1DCC0ᴅ
+    &#94DCC3▢ &#ffffffᴡʜɪᴛᴇʟɪꜱᴛ ʙыᴋлючᴇʜ.'
+  plugin-usage: ' &#CDDEDFꜰ&#C7DDD3ᴏ&#C1DDC6x&#BEDDC0ᴡ&#BBDCBAᴀ&#AEDCBDʀ&#A1DCC0ᴅ
+    &#94DCC3▢ &#ffffffиᴄпᴏльзуйᴛᴇ: &#D4EECC/ɴʙᴡʟ ᴀᴅᴅ&#ffffff|&#D4EECCʀᴇᴍᴏᴠᴇ <ʜиᴋʜᴇйᴍ
+    для дᴏбᴀʙлᴇʜия или удᴀлᴇʜия игᴘᴏᴋᴀ из ʙᴀйᴛлиᴄᴛᴀ'

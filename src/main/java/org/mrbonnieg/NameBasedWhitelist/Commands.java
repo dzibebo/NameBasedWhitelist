@@ -10,6 +10,7 @@ import org.bukkit.entity.Player;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 
 public class Commands implements CommandExecutor, TabCompleter {
     private final Main plugin;
@@ -18,109 +19,163 @@ public class Commands implements CommandExecutor, TabCompleter {
         this.plugin = plugin;
     }
 
+    // -------------------------------------------------------------------------
+    // Command execution
+    // -------------------------------------------------------------------------
+
     @Override
     public boolean onCommand(CommandSender sender, Command command, String label, String[] args) {
-        String noPermissions = HexColorParser.parseHexColors(plugin.getConfig().getString("messages.no-permissions"));
-        String playerAdd = HexColorParser.parseHexColors(plugin.getConfig().getString("messages.player-add"));
-        String playerRemove = HexColorParser.parseHexColors(plugin.getConfig().getString("messages.player-remove"));
-        String playerAlreadyExists = HexColorParser.parseHexColors(plugin.getConfig().getString("messages.player-already-exists"));
-        String playerNotFound = HexColorParser.parseHexColors(plugin.getConfig().getString("messages.player-not-found"));
-        String pluginReload = HexColorParser.parseHexColors(plugin.getConfig().getString("messages.plugin-reload"));
-        String pluginEnable = HexColorParser.parseHexColors(plugin.getConfig().getString("messages.plugin-enable"));
-        String pluginDisable = HexColorParser.parseHexColors(plugin.getConfig().getString("messages.plugin-disable"));
-        String pluginUsage = HexColorParser.parseHexColors(plugin.getConfig().getString("messages.plugin-usage"));
-
         if (args.length == 0) {
-            sender.sendMessage(pluginUsage);
+            sender.sendMessage(msg("messages.plugin-usage"));
             return true;
         }
 
-        switch (args[0].toLowerCase()) {
+        switch (args[0].toLowerCase(Locale.ROOT)) {
             case "reload":
                 if (!hasManagePermission(sender)) {
-                    sender.sendMessage(noPermissions);
-                    return true;
+                    sender.sendMessage(msg("messages.no-permissions"));
                 } else {
                     plugin.reloadConfig();
-                    sender.sendMessage(pluginReload);
-                    return true;
+                    plugin.reloadStorage();
+                    sender.sendMessage(msg("messages.plugin-reload"));
                 }
+                return true;
+
             case "add":
                 if (!hasModifyPermission(sender)) {
-                    sender.sendMessage(noPermissions);
+                    sender.sendMessage(msg("messages.no-permissions"));
                     return true;
-                } else {
-                    String playerName = args[1].toLowerCase();
-                    if (plugin.getStorage().getPlayers().contains(playerName)) {
-                        sender.sendMessage(playerAlreadyExists.replace("%player%", playerName));
-                        return true;
+                }
+                if (!plugin.getStorage().isReady()) {
+                    sender.sendMessage("§c[NameBasedWhitelist] ⚠ Database connection is currently disconnected/not ready! Check config.yml credentials or console.");
+                    return true;
+                }
+                if (args.length < 2) {
+                    sender.sendMessage(msg("messages.plugin-usage"));
+                    return true;
+                }
+                {
+                    String playerName = args[1].toLowerCase(Locale.ROOT);
+                    if (plugin.getStorage().containsPlayer(playerName)) {
+                        sender.sendMessage(msg("messages.player-already-exists").replace("%player%", args[1]));
                     } else {
                         plugin.getStorage().addPlayer(playerName);
-                        sender.sendMessage(playerAdd.replace("%player%", playerName));
-                        return true;
+                        sender.sendMessage(msg("messages.player-add").replace("%player%", args[1]));
                     }
                 }
+                return true;
+
             case "remove":
                 if (!hasModifyPermission(sender)) {
-                    sender.sendMessage(noPermissions);
+                    sender.sendMessage(msg("messages.no-permissions"));
                     return true;
-                } else {
-                    String playerName = args[1].toLowerCase();
-                    if (!plugin.getStorage().getPlayers().contains(playerName)) {
-                        sender.sendMessage(playerNotFound.replace("%player%", playerName));
-                        return true;
+                }
+                if (!plugin.getStorage().isReady()) {
+                    sender.sendMessage("§c[NameBasedWhitelist] ⚠ Database connection is currently disconnected/not ready! Check config.yml credentials or console.");
+                    return true;
+                }
+                if (args.length < 2) {
+                    sender.sendMessage(msg("messages.plugin-usage"));
+                    return true;
+                }
+                {
+                    String playerName = args[1].toLowerCase(Locale.ROOT);
+                    if (!plugin.getStorage().containsPlayer(playerName)) {
+                        sender.sendMessage(msg("messages.player-not-found").replace("%player%", args[1]));
                     } else {
                         plugin.getStorage().removePlayer(playerName);
-                        sender.sendMessage(playerRemove.replace("%player%", playerName));
-                        return true;
+                        sender.sendMessage(msg("messages.player-remove").replace("%player%", args[1]));
                     }
                 }
+                return true;
+
             case "enable":
                 if (!hasManagePermission(sender)) {
-                    sender.sendMessage(noPermissions);
-                    return true;
+                    sender.sendMessage(msg("messages.no-permissions"));
                 } else {
-                    plugin.getConfig().set("settings.enable", true);
-                    plugin.saveConfig();
-                    sender.sendMessage(pluginEnable);
-                    return true;
+                    plugin.setWhitelistEnabled(true);
+                    sender.sendMessage(msg("messages.plugin-enable"));
                 }
+                return true;
+
             case "disable":
                 if (!hasManagePermission(sender)) {
-                    sender.sendMessage(noPermissions);
-                    return true;
+                    sender.sendMessage(msg("messages.no-permissions"));
                 } else {
-                    plugin.getConfig().set("settings.enable", false);
-                    plugin.saveConfig();
-                    sender.sendMessage(pluginDisable);
-                    return true;
+                    plugin.setWhitelistEnabled(false);
+                    sender.sendMessage(msg("messages.plugin-disable"));
                 }
+                return true;
+
             default:
-                sender.sendMessage(pluginUsage);
+                sender.sendMessage(msg("messages.plugin-usage"));
                 return true;
         }
     }
 
+    // -------------------------------------------------------------------------
+    // Tab completion
+    // -------------------------------------------------------------------------
+
     @Override
     public List<String> onTabComplete(CommandSender sender, Command command, String alias, String[] args) {
         if (args.length == 1) {
-            return Lists.newArrayList("add", "remove", "enable", "disable", "reload");
+            return filterStartsWith(
+                    Lists.newArrayList("add", "remove", "enable", "disable", "reload"),
+                    args[0]);
         }
-        if (args.length == 2 && (args[0].equalsIgnoreCase("add") || args[0].equalsIgnoreCase("remove"))) {
-            List<String> playerNames = new ArrayList<>();
-            for (Player player : Bukkit.getServer().getOnlinePlayers()) {
-                playerNames.add((player.getName()));
+
+        if (args.length == 2) {
+            String sub = args[0].toLowerCase(Locale.ROOT);
+
+            if (sub.equals("add")) {
+                // Suggest online players who are NOT already whitelisted
+                List<String> suggestions = new ArrayList<>();
+                for (Player player : Bukkit.getServer().getOnlinePlayers()) {
+                    String name = player.getName();
+                    if (!plugin.getStorage().containsPlayer(name)) {
+                        suggestions.add(name);
+                    }
+                }
+                return filterStartsWith(suggestions, args[1]);
             }
-            return playerNames;
+
+            if (sub.equals("remove")) {
+                // Suggest players from the whitelist cache — fast (no DB query)
+                return filterStartsWith(new ArrayList<>(plugin.getStorage().getPlayers()), args[1]);
+            }
         }
+
         return Lists.newArrayList();
     }
 
+    // -------------------------------------------------------------------------
+    // Helpers
+    // -------------------------------------------------------------------------
+
+    /** Parse hex colors from the config string. */
+    private String msg(String path) {
+        return HexColorParser.parseHexColors(plugin.getConfig().getString(path));
+    }
+
+    /** Filter a list to entries that start with the given prefix (case-insensitive). */
+    private static List<String> filterStartsWith(List<String> list, String prefix) {
+        if (prefix == null || prefix.isEmpty()) return list;
+        String lower = prefix.toLowerCase(Locale.ROOT);
+        List<String> result = new ArrayList<>();
+        for (String entry : list) {
+            if (entry.toLowerCase(Locale.ROOT).startsWith(lower)) result.add(entry);
+        }
+        return result;
+    }
+
     private boolean hasManagePermission(CommandSender sender) {
-        return sender.hasPermission("namebasedwhitelist.manage") || sender.hasPermission("namebasedwhitelist.*");
+        return sender.hasPermission("namebasedwhitelist.manage")
+                || sender.hasPermission("namebasedwhitelist.*");
     }
 
     private boolean hasModifyPermission(CommandSender sender) {
-        return sender.hasPermission("namebasedwhitelist.modify") || sender.hasPermission("namebasedwhitelist.*");
+        return sender.hasPermission("namebasedwhitelist.modifylist")
+                || sender.hasPermission("namebasedwhitelist.*");
     }
 }

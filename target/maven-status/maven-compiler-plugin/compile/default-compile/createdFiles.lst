@@ -1,0 +1,7 @@
+org\mrbonnieg\NameBasedWhitelist\Storage.class
+org\mrbonnieg\NameBasedWhitelist\MySqlStorage.class
+org\mrbonnieg\NameBasedWhitelist\HexColorParser.class
+org\mrbonnieg\NameBasedWhitelist\Main.class
+org\mrbonnieg\NameBasedWhitelist\Commands.class
+org\mrbonnieg\NameBasedWhitelist\Events.class
+org\mrbonnieg\NameBasedWhitelist\YamlStorage.class

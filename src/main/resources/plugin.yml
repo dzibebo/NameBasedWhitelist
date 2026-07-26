@@ -1,7 +1,7 @@
 name: NameBasedWhitelist
-version: '3.2.3'
+version: '${project.version}'
 main: org.mrbonnieg.NameBasedWhitelist.Main
-api-version: '1.19'
+api-version: '1.21'
 load: STARTUP
 authors: [ MrBonnieG ]
 description: Simple name based whitelist for your servers.

@@ -1,7 +1,10 @@
 package org.mrbonnieg.NameBasedWhitelist;
 
+import com.zaxxer.hikari.HikariConfig;
+import com.zaxxer.hikari.HikariDataSource;
 import org.bukkit.Bukkit;
 import org.bukkit.configuration.file.FileConfiguration;
+import org.bukkit.scheduler.BukkitTask;
 
 import java.sql.*;
 import java.util.ArrayList;
@@ -13,112 +16,210 @@ import java.util.logging.Level;
 
 public class MySqlStorage implements Storage {
     private final Main plugin;
-    private final String host, database, username, password;
+    private volatile HikariDataSource dataSource;
 
-    private final Set<String> cache= ConcurrentHashMap.newKeySet();
-    private final Set<String> pendingAdds = ConcurrentHashMap.newKeySet();
+    /** In-memory cache — primary source of truth for reads (thread-safe). */
+    private volatile Set<String> cache = ConcurrentHashMap.newKeySet();
+
+    /** Write-behind queues — flushed to DB every FLUSH_INTERVAL_TICKS ticks. */
+    private final Set<String> pendingAdds    = ConcurrentHashMap.newKeySet();
     private final Set<String> pendingRemoves = ConcurrentHashMap.newKeySet();
 
-    private volatile Connection connection;
     private volatile boolean ready = false;
+    private BukkitTask flushTask;
+    private BukkitTask syncTask;
+    private BukkitTask retryTask;
 
+    /** Flush every 2 s (async bursts). */
     private static final long FLUSH_INTERVAL_TICKS = 40L;
-    private static final long SYNC_INTERVAL_TICKS = 20L * 60;
 
     public MySqlStorage(Main plugin) {
         this.plugin = plugin;
-        FileConfiguration config = plugin.getConfig();
-        this.host = config.getString("database.host", "localhost:3306");
-        this.database = config.getString("database.name", "database");
-        this.username = config.getString("database.username", "root");
-        this.password = config.getString("database.password", "");
-
+        // Initialise pool on an async thread so the main thread is never blocked.
         Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
-            initConnection();
-            if (!ready) return;
-
-            Bukkit.getScheduler().runTaskTimerAsynchronously(
-                    plugin, this::flushPending,
-                    FLUSH_INTERVAL_TICKS, FLUSH_INTERVAL_TICKS
-            );
-            Bukkit.getScheduler().runTaskTimerAsynchronously(
-                    plugin, this::syncCacheFromDb,
-                    SYNC_INTERVAL_TICKS, SYNC_INTERVAL_TICKS
-            );
+            initPool();
+            if (!ready) {
+                startRetryTimer();
+                return;
+            }
+            startTimers();
         });
     }
 
-    private synchronized void initConnection() {
+    private synchronized void startTimers() {
+        if (flushTask != null) flushTask.cancel();
+        if (syncTask != null) syncTask.cancel();
+        if (retryTask != null) {
+            retryTask.cancel();
+            retryTask = null;
+        }
+
+        int syncIntervalMins = plugin.getConfig().getInt("database.sync-interval", 3);
+        long syncIntervalTicks = 20L * 60L * syncIntervalMins;
+
+        flushTask = Bukkit.getScheduler().runTaskTimerAsynchronously(plugin, this::flushPending,
+                FLUSH_INTERVAL_TICKS, FLUSH_INTERVAL_TICKS);
+        syncTask = Bukkit.getScheduler().runTaskTimerAsynchronously(plugin, this::syncCacheFromDb,
+                syncIntervalTicks, syncIntervalTicks);
+    }
+
+    private synchronized void startRetryTimer() {
+        if (retryTask != null) return;
+        plugin.getLogger().log(Level.WARNING, "MySQL connection is not ready. Automatic retry scheduled every 30 seconds...");
+        retryTask = Bukkit.getScheduler().runTaskTimerAsynchronously(plugin, () -> {
+            if (ready) {
+                if (retryTask != null) {
+                    retryTask.cancel();
+                    retryTask = null;
+                }
+                return;
+            }
+            plugin.getLogger().log(Level.INFO, "Attempting to reconnect MySQL pool...");
+            initPool();
+            if (ready) {
+                startTimers();
+            }
+        }, 600L, 600L); // 30 seconds
+    }
+
+    // -------------------------------------------------------------------------
+    // Pool initialisation
+    // -------------------------------------------------------------------------
+
+    private synchronized void initPool() {
         try {
-            if (connection != null && !connection.isClosed()) return;
-            String url = "jdbc:mysql://" + host + "/" + database
-                    + "?autoReconnect=true"
-                    + "&connectTimeout=90000"
-                    + "&socketTimeout=180000"
-                    + "&useSSL=false"
-                    + "&characterEncoding=utf8"
-                    + "&allowPublicKeyRetrieval=true"
+            if (dataSource != null && !dataSource.isClosed()) {
+                dataSource.close();
+            }
+            FileConfiguration config = plugin.getConfig();
+            String host     = config.getString("database.host",     "localhost:3306");
+            String database = config.getString("database.name",     "database");
+            String username = config.getString("database.username", "root");
+            String password = config.getString("database.password", "");
+
+            int  poolSize          = config.getInt("database.pool-size",          10);
+            long connectionTimeout = config.getLong("database.connection-timeout", 30_000);
+            long idleTimeout       = config.getLong("database.idle-timeout",       600_000);
+            long maxLifetime       = config.getLong("database.max-lifetime",       1_800_000);
+
+            // Base options that are always required for correct behaviour
+            String baseOptions = "allowPublicKeyRetrieval=true"
                     + "&rewriteBatchedStatements=true"
                     + "&cachePrepStmts=true"
-                    + "&prepStmtCacheSize=10";
-            connection = DriverManager.getConnection(url, username, password);
+                    + "&prepStmtCacheSize=25"
+                    + "&prepStmtCacheSqlLimit=2048"
+                    + "&useServerPrepStmts=true";
+
+            // User-defined options from config (override / extend base options)
+            String extraOptions = config.getString("database.connectionOptions", "");
+            String queryString  = extraOptions.isEmpty()
+                    ? baseOptions
+                    : baseOptions + "&" + extraOptions;
+
+            HikariConfig hk = new HikariConfig();
+            hk.setJdbcUrl("jdbc:mysql://" + host + "/" + database + "?" + queryString);
+            hk.setUsername(username);
+            hk.setPassword(password);
+            hk.setDriverClassName("com.mysql.cj.jdbc.Driver");
+
+            // Pool sizing — keep it reasonable; 10 connections cover ~2000 concurrent look-ups easily
+            hk.setMaximumPoolSize(poolSize);
+            hk.setMinimumIdle(Math.max(2, poolSize / 5));
+            hk.setConnectionTimeout(connectionTimeout);
+            hk.setIdleTimeout(idleTimeout);
+            hk.setMaxLifetime(maxLifetime);
+            hk.setKeepaliveTime(60_000);
+            hk.setPoolName("NBWLPool");
+
+            // Fast validation query
+            hk.setConnectionTestQuery("SELECT 1");
+
+            dataSource = new HikariDataSource(hk);
+
             createTable();
             loadCache();
             ready = true;
 
-            plugin.getLogger().log(Level.INFO, "MySQL connected. Loaded " + cache.size() + " players into cache.");
-        } catch (SQLException e) {
-            plugin.getLogger().log(Level.SEVERE, "MySQL connection failed!", e);
+            plugin.getLogger().log(Level.INFO,
+                    "MySQL pool ready (" + poolSize + " conns). Loaded " + cache.size() + " players.");
+        } catch (Exception e) {
+            ready = false;
+            if (dataSource != null && !dataSource.isClosed()) {
+                try { dataSource.close(); } catch (Exception ex) {}
+            }
+            dataSource = null;
+            plugin.getLogger().log(Level.SEVERE, "MySQL pool initialisation failed! Check your database settings in config.yml (host, name, username, password). Error: " + e.getMessage());
         }
     }
 
-    private synchronized Connection getConnection() throws SQLException {
-        if (connection == null || connection.isClosed()) initConnection();
-        return connection;
-    }
+    // -------------------------------------------------------------------------
+    // Schema
+    // -------------------------------------------------------------------------
 
     private void createTable() throws SQLException {
-        try (Statement statement = connection.createStatement()) {
-            statement.executeUpdate("CREATE TABLE IF NOT EXISTS whitelist (username VARCHAR(255) PRIMARY KEY);");
+        if (dataSource == null || dataSource.isClosed()) return;
+        try (Connection c = dataSource.getConnection();
+             Statement  s = c.createStatement()) {
+            // VARCHAR(64) — Support long names/Bedrock Geyser prefix crossplay; ENGINE=InnoDB for transactions
+            s.executeUpdate(
+                    "CREATE TABLE IF NOT EXISTS whitelist (" +
+                    "  username VARCHAR(64) NOT NULL," +
+                    "  PRIMARY KEY (username)" +
+                    ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;");
         }
     }
 
-    private void loadCache() throws SQLException {
-        Set<String> fresh = new HashSet<>();
-        try (Statement statement = connection.createStatement();
-             ResultSet resultSet = statement.executeQuery("SELECT username FROM whitelist;")) {
-            while (resultSet.next()) {
-                fresh.add(resultSet.getString("username").toLowerCase());
-            }
+    // -------------------------------------------------------------------------
+    // Cache management
+    // -------------------------------------------------------------------------
+
+    private synchronized void loadCache() throws SQLException {
+        if (dataSource == null || dataSource.isClosed()) return;
+        Set<String> fresh = ConcurrentHashMap.newKeySet();
+        try (Connection c  = dataSource.getConnection();
+             Statement  s  = c.createStatement();
+             ResultSet  rs = s.executeQuery("SELECT username FROM whitelist;")) {
+            while (rs.next()) fresh.add(rs.getString("username").toLowerCase());
         }
-        cache.clear();
-        cache.addAll(fresh);
+        // Merge pending adds so we don't lose writes that haven't been flushed yet
+        fresh.addAll(pendingAdds);
+        fresh.removeAll(pendingRemoves);
+        
+        // Swap reference atomically to prevent temporary empty state reads
+        this.cache = fresh;
     }
 
-    private synchronized void syncCacheFromDb() {
+    private void syncCacheFromDb() {
+        if (!isReady()) return;
         try {
-            flushPending();
-            loadCache();
+            flushPending();  // push writes first
+            loadCache();     // then re-read (both are synchronized — sequential, never concurrent)
         } catch (Exception e) {
             plugin.getLogger().log(Level.WARNING, "Cache sync from DB failed!", e);
         }
     }
+
+    // -------------------------------------------------------------------------
+    // Write-behind flush (batched INSERT + DELETE in one transaction per call)
+    // -------------------------------------------------------------------------
+
     private synchronized void flushPending() {
+        if (!isReady()) return;
         if (pendingAdds.isEmpty() && pendingRemoves.isEmpty()) return;
 
-        Set<String> toAdd = new HashSet<>(pendingAdds);
+        Set<String> toAdd    = new HashSet<>(pendingAdds);
         Set<String> toRemove = new HashSet<>(pendingRemoves);
         pendingAdds.clear();
         pendingRemoves.clear();
 
-        try {
-            Connection connection = getConnection();
-            connection.setAutoCommit(false);
+        boolean success = false;
+        try (Connection c = dataSource.getConnection()) {
+            c.setAutoCommit(false);
             try {
                 if (!toAdd.isEmpty()) {
-                    try (PreparedStatement ps = connection.prepareStatement(
+                    try (PreparedStatement ps = c.prepareStatement(
                             "INSERT INTO whitelist (username) VALUES (?)" +
-                                    " ON DUPLICATE KEY UPDATE username = username;")) {
+                            " ON DUPLICATE KEY UPDATE username = username;")) {
                         for (String name : toAdd) {
                             ps.setString(1, name);
                             ps.addBatch();
@@ -127,7 +228,7 @@ public class MySqlStorage implements Storage {
                     }
                 }
                 if (!toRemove.isEmpty()) {
-                    try (PreparedStatement ps = connection.prepareStatement(
+                    try (PreparedStatement ps = c.prepareStatement(
                             "DELETE FROM whitelist WHERE username = ?;")) {
                         for (String name : toRemove) {
                             ps.setString(1, name);
@@ -136,20 +237,37 @@ public class MySqlStorage implements Storage {
                         ps.executeBatch();
                     }
                 }
-                connection.commit();
+                c.commit();
+                success = true;
             } catch (SQLException e) {
-                connection.rollback();
-                pendingAdds.addAll(toAdd);
-                pendingRemoves.addAll(toRemove);
-                plugin.getLogger().log(Level.SEVERE, "MySQL flush failed, will retry in " + (FLUSH_INTERVAL_TICKS / 20) + "s", e);
+                try {
+                    c.rollback();
+                } catch (SQLException ex) {
+                    plugin.getLogger().log(Level.WARNING, "Rollback failed", ex);
+                }
+                plugin.getLogger().log(Level.SEVERE,
+                        "MySQL flush failed, will retry in " + (FLUSH_INTERVAL_TICKS / 20) + "s", e);
             } finally {
-                connection.setAutoCommit(true);
+                try {
+                    c.setAutoCommit(true);
+                } catch (SQLException ex) {
+                    // Ignore, connection closing anyway
+                }
             }
         } catch (SQLException e) {
             plugin.getLogger().log(Level.SEVERE, "MySQL connection error during flush!", e);
         }
+
+        if (!success) {
+            // Put back so the next flush can retry without data loss
+            pendingAdds.addAll(toAdd);
+            pendingRemoves.addAll(toRemove);
+        }
     }
 
+    // -------------------------------------------------------------------------
+    // Storage interface
+    // -------------------------------------------------------------------------
 
     @Override
     public List<String> getPlayers() {
@@ -181,6 +299,26 @@ public class MySqlStorage implements Storage {
 
     @Override
     public void saveWhitelist() {
+        if (!isReady()) return;
         Bukkit.getScheduler().runTaskAsynchronously(plugin, this::flushPending);
+    }
+
+    /** Called by Main#onDisable — flush synchronously before the JVM exits. */
+    public void shutdown() {
+        if (flushTask != null) flushTask.cancel();
+        if (syncTask != null) syncTask.cancel();
+        if (retryTask != null) retryTask.cancel();
+        if (isReady()) {
+            flushPending();
+        }
+        if (dataSource != null && !dataSource.isClosed()) {
+            dataSource.close();
+        }
+        ready = false;
+    }
+
+    @Override
+    public boolean isReady() {
+        return ready && dataSource != null && !dataSource.isClosed();
     }
 }
