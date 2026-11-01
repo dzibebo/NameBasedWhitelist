@@ -35,18 +35,26 @@ public class MySqlStorage implements Storage {
 
     public MySqlStorage(Main plugin) {
         this.plugin = plugin;
-        // Initialise pool on an async thread so the main thread is never blocked.
-        Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
-            initPool();
-            if (!ready) {
-                startRetryTimer();
-                return;
-            }
-            startTimers();
-        });
+        // Synchronously initialise the pool and load the cache so data is immediately ready on plugin load
+        initPool();
+    }
+
+    @Override
+    public synchronized void startTasks() {
+        if (!plugin.isEnabled()) {
+            return;
+        }
+        if (!ready) {
+            startRetryTimer();
+            return;
+        }
+        startTimers();
     }
 
     private synchronized void startTimers() {
+        if (!plugin.isEnabled()) {
+            return;
+        }
         if (flushTask != null) flushTask.cancel();
         if (syncTask != null) syncTask.cancel();
         if (retryTask != null) {
@@ -64,13 +72,18 @@ public class MySqlStorage implements Storage {
     }
 
     private synchronized void startRetryTimer() {
-        if (retryTask != null) return;
+        if (!plugin.isEnabled()) {
+            return;
+        }
+        if (retryTask != null && !retryTask.isCancelled()) return;
         plugin.getLogger().log(Level.WARNING, "MySQL connection is not ready. Automatic retry scheduled every 30 seconds...");
         retryTask = Bukkit.getScheduler().runTaskTimerAsynchronously(plugin, () -> {
             if (ready) {
-                if (retryTask != null) {
-                    retryTask.cancel();
-                    retryTask = null;
+                synchronized (MySqlStorage.this) {
+                    if (retryTask != null) {
+                        retryTask.cancel();
+                        retryTask = null;
+                    }
                 }
                 return;
             }
@@ -130,6 +143,9 @@ public class MySqlStorage implements Storage {
             hk.setMaxLifetime(maxLifetime);
             hk.setKeepaliveTime(60_000);
             hk.setPoolName("NBWLPool");
+
+            // Avoid freezing boot if MySQL is unreachable
+            hk.setInitializationFailTimeout(Math.min(connectionTimeout, 10_000L));
 
             // Fast validation query
             hk.setConnectionTestQuery("SELECT 1");
@@ -300,19 +316,34 @@ public class MySqlStorage implements Storage {
     @Override
     public void saveWhitelist() {
         if (!isReady()) return;
-        Bukkit.getScheduler().runTaskAsynchronously(plugin, this::flushPending);
+        if (plugin.isEnabled()) {
+            Bukkit.getScheduler().runTaskAsynchronously(plugin, this::flushPending);
+        } else {
+            flushPending();
+        }
     }
 
-    /** Called by Main#onDisable — flush synchronously before the JVM exits. */
-    public void shutdown() {
-        if (flushTask != null) flushTask.cancel();
-        if (syncTask != null) syncTask.cancel();
-        if (retryTask != null) retryTask.cancel();
+    /** Flush synchronously and close pool. */
+    @Override
+    public synchronized void shutdown() {
+        if (flushTask != null) {
+            flushTask.cancel();
+            flushTask = null;
+        }
+        if (syncTask != null) {
+            syncTask.cancel();
+            syncTask = null;
+        }
+        if (retryTask != null) {
+            retryTask.cancel();
+            retryTask = null;
+        }
         if (isReady()) {
             flushPending();
         }
         if (dataSource != null && !dataSource.isClosed()) {
             dataSource.close();
+            dataSource = null;
         }
         ready = false;
     }

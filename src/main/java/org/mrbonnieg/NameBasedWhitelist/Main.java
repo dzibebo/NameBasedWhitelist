@@ -68,7 +68,12 @@ public final class Main extends JavaPlugin {
     }
 
     @Override
-    public void onEnable() {
+    public void onLoad() {
+        initConfiguration();
+        initStorage();
+    }
+
+    private void initConfiguration() {
         // If config.yml exists but is empty, delete it to force saveDefaultConfig() to copy the default resource.
         File configFile = new File(getDataFolder(), "config.yml");
         if (configFile.exists() && configFile.length() == 0) {
@@ -76,20 +81,9 @@ public final class Main extends JavaPlugin {
         }
         saveDefaultConfig();
         getConfig().options().copyDefaults(true);
-
-        reloadStorage();
-
-        getServer().getPluginManager().registerEvents(new Events(this), this);
-        Commands commands = new Commands(this);
-        getServer().getPluginCommand("nbwl").setExecutor(commands);
-        getServer().getPluginCommand("nbwl").setTabCompleter(commands);
-        getLogger().log(Level.INFO, "NameBasedWhitelist v" + getDescription().getVersion() + " enabled");
     }
 
-    public void reloadStorage() {
-        if (storage instanceof MySqlStorage) {
-            ((MySqlStorage) storage).shutdown();
-        }
+    private void initStorage() {
         String storageType = getConfig().getString("settings.storage-type", "yml");
         switch (storageType.toLowerCase()) {
             case "mysql":
@@ -103,11 +97,38 @@ public final class Main extends JavaPlugin {
         }
     }
 
+    public void reloadStorage() {
+        if (storage != null) {
+            storage.shutdown();
+        }
+        initStorage();
+        if (isEnabled() && storage != null) {
+            storage.startTasks();
+        }
+    }
+
+    @Override
+    public void onEnable() {
+        if (storage == null) {
+            initConfiguration();
+            initStorage();
+        }
+
+        if (storage != null) {
+            storage.startTasks();
+        }
+
+        getServer().getPluginManager().registerEvents(new Events(this), this);
+        Commands commands = new Commands(this);
+        getServer().getPluginCommand("nbwl").setExecutor(commands);
+        getServer().getPluginCommand("nbwl").setTabCompleter(commands);
+        getLogger().log(Level.INFO, "NameBasedWhitelist v" + getDescription().getVersion() + " enabled");
+    }
+
     @Override
     public void onDisable() {
-        // Flush any pending MySQL writes before the server shuts down
-        if (storage instanceof MySqlStorage) {
-            ((MySqlStorage) storage).shutdown();
+        if (storage != null) {
+            storage.shutdown();
         }
         getLogger().log(Level.INFO, "NameBasedWhitelist disabled");
     }

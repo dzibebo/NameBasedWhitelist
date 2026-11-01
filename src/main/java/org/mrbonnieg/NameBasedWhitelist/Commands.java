@@ -46,8 +46,7 @@ public class Commands implements CommandExecutor, TabCompleter {
                     sender.sendMessage(msg("messages.no-permissions"));
                     return true;
                 }
-                if (!plugin.getStorage().isReady()) {
-                    sender.sendMessage("§c[NameBasedWhitelist] ⚠ Database connection is currently disconnected/not ready! Check config.yml credentials or console.");
+                if (!checkStorageReady(sender)) {
                     return true;
                 }
                 if (args.length < 2) {
@@ -70,8 +69,7 @@ public class Commands implements CommandExecutor, TabCompleter {
                     sender.sendMessage(msg("messages.no-permissions"));
                     return true;
                 }
-                if (!plugin.getStorage().isReady()) {
-                    sender.sendMessage("§c[NameBasedWhitelist] ⚠ Database connection is currently disconnected/not ready! Check config.yml credentials or console.");
+                if (!checkStorageReady(sender)) {
                     return true;
                 }
                 if (args.length < 2) {
@@ -113,6 +111,21 @@ public class Commands implements CommandExecutor, TabCompleter {
         }
     }
 
+    private boolean checkStorageReady(CommandSender sender) {
+        if (plugin.getStorage() == null || !plugin.getStorage().isReady()) {
+            String dbError = plugin.getConfig().getString("messages.database-error");
+            if (dbError == null || dbError.trim().isEmpty()) {
+                dbError = plugin.getConfig().getString("messages.database-not-ready");
+            }
+            if (dbError == null || dbError.trim().isEmpty()) {
+                dbError = " &#CDDEDFꜰ&#C7DDD3ᴏ&#C1DDC6x&#BEDDC0ᴡ&#BBDCBAᴀ&#AEDCBDʀ&#A1DCC0ᴅ &#94DCC3▢ &#ffffffбᴀзᴀ дᴀʜʜыx ᴇщё ʜᴇ гᴏᴛᴏʙᴀ! пᴏдᴏждиᴛᴇ или ᴄʙяжиᴛᴇᴄь ᴄ ᴀдᴍиʜиᴄᴛᴘᴀциᴇй.";
+            }
+            sender.sendMessage(HexColorParser.parseHexColors(dbError));
+            return false;
+        }
+        return true;
+    }
+
     // -------------------------------------------------------------------------
     // Tab completion
     // -------------------------------------------------------------------------
@@ -129,6 +142,9 @@ public class Commands implements CommandExecutor, TabCompleter {
             String sub = args[0].toLowerCase(Locale.ROOT);
 
             if (sub.equals("add")) {
+                if (plugin.getStorage() == null || !plugin.getStorage().isReady()) {
+                    return Lists.newArrayList();
+                }
                 // Suggest online players who are NOT already whitelisted
                 List<String> suggestions = new ArrayList<>();
                 for (Player player : Bukkit.getServer().getOnlinePlayers()) {
@@ -141,6 +157,9 @@ public class Commands implements CommandExecutor, TabCompleter {
             }
 
             if (sub.equals("remove")) {
+                if (plugin.getStorage() == null || !plugin.getStorage().isReady()) {
+                    return Lists.newArrayList();
+                }
                 // Suggest players from the whitelist cache — fast (no DB query)
                 return filterStartsWith(new ArrayList<>(plugin.getStorage().getPlayers()), args[1]);
             }

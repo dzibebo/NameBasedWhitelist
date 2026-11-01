@@ -1,6 +1,5 @@
 package org.mrbonnieg.NameBasedWhitelist;
 
-import org.bukkit.ChatColor;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
@@ -22,9 +21,15 @@ public class Events implements Listener {
     public void onLogin(PlayerLoginEvent event) {
         if (!plugin.getConfig().getBoolean("settings.enable")) return;
 
-        if (!plugin.getStorage().isReady()) {
-            event.disallow(PlayerLoginEvent.Result.KICK_OTHER,
-                    ChatColor.RED + "[NameBasedWhitelist] ⚠ Database connection is currently unavailable/not ready!\nCheck server console or config.yml credentials.");
+        if (plugin.getStorage() == null || !plugin.getStorage().isReady()) {
+            String dbNotReady = plugin.getConfig().getString("messages.database-not-ready");
+            if (dbNotReady == null || dbNotReady.trim().isEmpty()) {
+                dbNotReady = plugin.getConfig().getString("messages.database-error");
+            }
+            if (dbNotReady == null || dbNotReady.trim().isEmpty()) {
+                dbNotReady = "&#CDDEDF⚠\n\n&#CDDEDFбᴀзᴀ дᴀʜʜыx ᴇщё ʜᴇ гᴏᴛᴏʙᴀ!\n&#ffffffпᴏдᴏждиᴛᴇ ʜᴇмʜᴏгᴏ или &#CDDEDFᴄʙяжиᴛᴇᴄь ᴄ ᴀдᴍиʜиᴄᴛᴘᴀциᴇй&#ffffff.\n\n&#CDDEDF⚠";
+            }
+            event.disallow(PlayerLoginEvent.Result.KICK_OTHER, HexColorParser.parseHexColors(dbNotReady));
             return;
         }
 

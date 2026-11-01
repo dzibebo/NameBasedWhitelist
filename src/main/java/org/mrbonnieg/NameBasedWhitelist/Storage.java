@@ -9,4 +9,7 @@ public interface Storage {
     boolean removePlayer(String username);
     void saveWhitelist();
     boolean isReady();
+
+    default void startTasks() {}
+    default void shutdown() {}
 }

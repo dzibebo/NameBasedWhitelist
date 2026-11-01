@@ -29,6 +29,15 @@ messages:
     &#ffffffили &#CDDEDFзᴀпᴏлʜиᴛь &#ffffffᴀʜᴋᴇᴛу.
 
     &#CDDEDF⚠
+  database-not-ready: |-
+    &#CDDEDF⚠
+
+    &#CDDEDFбᴀзᴀ дᴀʜʜыx ᴇщё ʜᴇ гᴏᴛᴏʙᴀ!
+    &#ffffffпᴏдᴏждиᴛᴇ ʜᴇмʜᴏгᴏ или &#CDDEDFᴄʙяжиᴛᴇᴄь ᴄ ᴀдᴍиʜиᴄᴛᴘᴀциᴇй&#ffffff.
+
+    &#CDDEDF⚠
+  database-error: ' &#CDDEDFꜰ&#C7DDD3ᴏ&#C1DDC6x&#BEDDC0ᴡ&#BBDCBAᴀ&#AEDCBDʀ&#A1DCC0ᴅ
+    &#94DCC3▢ &#ffffffбᴀзᴀ дᴀʜʜыx ᴇщё ʜᴇ гᴏᴛᴏʙᴀ! пᴏдᴏждиᴛᴇ или ᴄʙяжиᴛᴇᴄь ᴄ ᴀдᴍиʜиᴄᴛᴘᴀциᴇй.'
   no-permissions: ' &#CDDEDFꜰ&#C7DDD3ᴏ&#C1DDC6x&#BEDDC0ᴡ&#BBDCBAᴀ&#AEDCBDʀ&#A1DCC0ᴅ
     &#94DCC3▢ &#ffffffу ʙᴀᴄ ʜᴇдᴏᴄᴛᴀᴛᴏчʜᴏ пᴘᴀʙ.'
   player-add: ' &#CDDEDFꜰ&#C7DDD3ᴏ&#C1DDC6x&#BEDDC0ᴡ&#BBDCBAᴀ&#AEDCBDʀ&#A1DCC0ᴅ &#94DCC3▢

@@ -25,6 +25,9 @@ public class YamlStorage implements Storage {
     public YamlStorage(Main plugin) {
         this.plugin = plugin;
         this.whitelistFile = new File(plugin.getDataFolder(), "whitelist.yml");
+        if (!whitelistFile.exists()) {
+            plugin.saveResource("whitelist.yml", false);
+        }
         this.whitelist = YamlConfiguration.loadConfiguration(whitelistFile);
 
         // Populate cache once on startup
