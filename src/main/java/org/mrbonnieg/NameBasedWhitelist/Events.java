@@ -27,7 +27,7 @@ public class Events implements Listener {
                 dbNotReady = plugin.getConfig().getString("messages.database-error");
             }
             if (dbNotReady == null || dbNotReady.trim().isEmpty()) {
-                dbNotReady = "&#CDDEDF⚠\n\n&#CDDEDFбᴀзᴀ дᴀʜʜыx ᴇщё ʜᴇ гᴏᴛᴏʙᴀ!\n&#ffffffпᴏдᴏждиᴛᴇ ʜᴇмʜᴏгᴏ или &#CDDEDFᴄʙяжиᴛᴇᴄь ᴄ ᴀдᴍиʜиᴄᴛᴘᴀциᴇй&#ffffff.\n\n&#CDDEDF⚠";
+                dbNotReady = "&cDatabase is not ready yet!\n&7Please wait a moment or contact administration.";
             }
             event.disallow(PlayerLoginEvent.Result.KICK_OTHER, HexColorParser.parseHexColors(dbNotReady));
             return;
@@ -35,9 +35,11 @@ public class Events implements Listener {
 
         String username = event.getPlayer().getName().toLowerCase();
         if (!plugin.getStorage().containsPlayer(username)) {
-            String kickMsg = HexColorParser.parseHexColors(
-                    plugin.getConfig().getString("messages.kick-message"));
-            event.disallow(PlayerLoginEvent.Result.KICK_WHITELIST, kickMsg);
+            String kickMsg = plugin.getConfig().getString("messages.kick-message");
+            if (kickMsg == null || kickMsg.trim().isEmpty()) {
+                kickMsg = "&cYou are not whitelisted on this server!";
+            }
+            event.disallow(PlayerLoginEvent.Result.KICK_WHITELIST, HexColorParser.parseHexColors(kickMsg));
         }
     }
 }

@@ -50,5 +50,5 @@ If you want to use MySQL instead of YAML:
 | Permission | Description |
 |-------------|-------------|
 | `namebasedwhitelist.*` | Access to all commands |
-| `namebasedwhitelist.modify` | Permission to add/remove players |
+| `namebasedwhitelist.modifylist` | Permission to add/remove players |
 | `namebasedwhitelist.manage` | Permission to reload and toggle whitelist |

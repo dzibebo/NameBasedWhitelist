@@ -118,7 +118,7 @@ public class Commands implements CommandExecutor, TabCompleter {
                 dbError = plugin.getConfig().getString("messages.database-not-ready");
             }
             if (dbError == null || dbError.trim().isEmpty()) {
-                dbError = " &#CDDEDFꜰ&#C7DDD3ᴏ&#C1DDC6x&#BEDDC0ᴡ&#BBDCBAᴀ&#AEDCBDʀ&#A1DCC0ᴅ &#94DCC3▢ &#ffffffбᴀзᴀ дᴀʜʜыx ᴇщё ʜᴇ гᴏᴛᴏʙᴀ! пᴏдᴏждиᴛᴇ или ᴄʙяжиᴛᴇᴄь ᴄ ᴀдᴍиʜиᴄᴛᴘᴀциᴇй.";
+                dbError = "&2NBWL &7> &cDatabase is not ready yet! Please wait or contact administration.";
             }
             sender.sendMessage(HexColorParser.parseHexColors(dbError));
             return false;
@@ -194,7 +194,7 @@ public class Commands implements CommandExecutor, TabCompleter {
     }
 
     private boolean hasModifyPermission(CommandSender sender) {
-        return sender.hasPermission("namebasedwhitelist.modifylist")
+        return sender.hasPermission("namebasedwhitelist.modifylist") || sender.hasPermission("namebasedwhitelist.modify")
                 || sender.hasPermission("namebasedwhitelist.*");
     }
 }
